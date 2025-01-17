@@ -24,8 +24,6 @@ class MindfulClient:
         - save_as (str): The format to save the chat history ('json', 'txt', 'md')
         - timeout (int): The timeout for API requests
         """
-        self.__online_check()
-        
         self.logger = setup_logger(
             name=self.__class__.__name__,
             log_on=log_on,
@@ -35,6 +33,7 @@ class MindfulClient:
         self.version = "25.1"
         self.timeout = timeout
 
+        self.__online_check()
         self.__load_preset()
         self.__load_locale()
         
