@@ -1,4 +1,5 @@
 import os
+import ast
 import json
 import uuid
 import time
@@ -8,65 +9,70 @@ import tempfile
 from importlib import resources
 from colorpaws import setup_logger
 from datetime import datetime
+from typing import Union, List
 
 class MindfulClient:
-    def __init__(self, log_on=True, log_to=None, agent='default', model='omni', instruction=None,
-                 save_to='outputs', save_as='json', timeout=60):
+    def __init__(self, log_on=False, log_to=None, model='omniverse', save_to='outputs', save_as='json',
+                 timeout=60, stream_output=True, stream_delay=0.01):
         """Initialize the MindfulClient.
         
         Parameters:
-        - log_on (bool): Whether to log to console or file
+        - log_on (bool): Enable logging
         - log_to (str): The file to log to (if log_on is True)
-        - agent (str): The agent to use
-        - model (str): The model to use
-        - instruction (str): The system prompt to use
-        - save_to (str): The directory to save the chat history
+        - model (str): The agent model to use
+        - save_to (str): The directory to save the chat history (None to disable saving)
         - save_as (str): The format to save the chat history ('json', 'txt', 'md')
-        - timeout (int): The timeout for API requests
+        - timeout (int): The timeout for each request
+        - stream_output (bool): Stream output characters as they arrive
+        - stream_delay (float): Delay between characters during streaming (default: 0.01s or 10ms)
         """
         self.logger = setup_logger(
             name=self.__class__.__name__,
             log_on=log_on,
             log_to=log_to
         )
-        
+
         self.version = "25.1"
-        self.timeout = timeout
+        self.stream_output = stream_output
+        self.stream_delay = stream_delay
 
         self.__online_check()
         self.__load_preset()
         self.__load_locale()
         
-        self.__init_checks(save_to, save_as, model)        
-        
-        if instruction:
-            self.logger.info("System prompt provided, setting agent to custom")
-            agent = 'custom'
-            
-        self.__agent = self.__get_agent(agent, instruction)
+        self.__init_checks(save_to, save_as, model, timeout)        
         self.logger.info("Mindful Client is ready!")
-          
-    def __init_checks(self, save_to: str, save_as: str, model: str):
+
+    def __init_checks(self, save_to: str, save_as: str, model: str, timeout: int):
         """
         Initialize essential checks.
         """
         try:
-            self.save_to = save_to if save_to else tempfile.gettempdir()
-            self.save_to = os.path.join(self.save_to, "mindful")
-            
-            if save_as.lower() in ['json', 'txt', 'md']:
-                self.save_as = save_as.lower()
+            if save_to is None:
+                self.save_to = None
+                self.save_as = None
+                self.logger.warning("Chat history will not be saved!")
             else:
-                self.logger.warning("Invalid save_as format, defaulting to 'json'")
-                self.save_as = 'json'
+                self.save_to = save_to if save_to else tempfile.gettempdir()
+                self.save_to = os.path.join(self.save_to, "mindful")
+                
+                # Only check save_as format if we're actually saving
+                if save_as.lower() in ['json', 'txt', 'md']:
+                    self.save_as = save_as.lower()
+                else:
+                    self.logger.warning("Invalid save_as format, defaulting to 'json'")
+                    self.save_as = 'json'
             
             self.__model = self.__preset['model'][model]
             if not self.__model:
                 raise ValueError(f"Invalid model: {model}")
+            
+            self.timeout = timeout
         
         except Exception as e:
-            self.logger.error(f"Error in init_modules: {e}")
-            raise RuntimeError(f"Error in init_modules: {e}")
+            error = f"Error in init_modules: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
         
     def __online_check(self, url: str = 'https://www.google.com', timeout: int = 10):
         """
@@ -76,8 +82,9 @@ class MindfulClient:
             requests.get(url, timeout=timeout)
         
         except Exception:
-            self.logger.error("No internet! Please check your network connection.")
-            raise RuntimeError("No internet! Please check your network connection.")
+            error = "No internet! Please check your network connection."
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __load_preset(self, preset_path='__mf__.py'):
         """
@@ -90,25 +97,27 @@ class MindfulClient:
                 self.__preset = json.loads(content)
         
         except Exception as e:
-            self.logger.error(f"Error in load_preset: {e}")
-            raise RuntimeError(f"Error in load_preset: {e}")
+            error = f"Error in load_preset: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
-    def __get_agent(self, agent: str, sysprompt: str = None):
+    def __get_agent(self, agent: str, instruction: str = None):
         """
         Get the agent prompt, handling custom system prompts if provided.
         """
         try:
             agent_template = self.__preset["agent"][agent]
             
-            # If this is a custom agent with sysprompt, format the template
-            if agent == 'custom' and sysprompt:
-                return agent_template.format(system_prompt=sysprompt)
+            # If this is a custom agent with instruction, format the template
+            if agent == 'custom' and instruction:
+                return agent_template.format(system_prompt=instruction)
             
             return agent_template
             
         except Exception as e:
-            self.logger.error(f"Error in get_agent: {e}")
-            raise RuntimeError(f"Error in get_agent: {e}")
+            error = f"Error in get_agent: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __load_locale(self):
         """
@@ -120,24 +129,26 @@ class MindfulClient:
             self.__up = base64.b64decode(self.__preset["locale"][2]).decode('utf-8')
             
         except Exception as e:
-            self.logger.error(f"Error in load_locale: {e}")
-            raise RuntimeError(f"Error in load_locale: {e}")
+            error = f"Error in load_locale: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __upload_image(self, image_path: str) -> str:
         """
         Upload an image to the server and return the URL.
         """
         try:
-            image_file = open(image_path, 'rb')
-            files = {'files': ('file.jpg', image_file, 'image/jpeg')}
-            response = requests.post(self.__up, files=files, headers=self.__hd)
-            response.raise_for_status()
-            result = response.json().get('file.jpg')
-            return result
+            with open(image_path, 'rb') as image_file:
+                files = {'files': ('file.jpg', image_file, 'image/jpeg')}
+                response = requests.post(self.__up, files=files, headers=self.__hd)
+                response.raise_for_status()
+                result = response.json().get('file.jpg')
+                return result
         
         except Exception as e:
-            self.logger.error(f"Error in upload_image: {e}")
-            raise RuntimeError(f"Error in upload_image: {e}")
+            error = f"Error in upload_image: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __get_task_id(self):
         """
@@ -152,64 +163,21 @@ class MindfulClient:
             return task_id
         
         except Exception as e:
-            self.logger.error(f"Error in get_task_id: {e}")
-            raise RuntimeError(f"Error in get_task_id: {e}")
-
-    def __stream_response(self, response, stream=""):
-        """
-        Process the streaming response and return the full response.
-        """
-        try:
-            buffer = ""  # Buffer for incomplete chunks
-            
-            for chunk in response.iter_content(chunk_size=1024):
-                if not chunk:
-                    continue
-                    
-                # Add chunk to buffer and split into lines
-                buffer += chunk.decode('utf-8')
-                lines = buffer.split('\n')
-                
-                # Process all complete lines
-                for line in lines[:-1]:  # Keep the last line in buffer as it might be incomplete
-                    if line.strip() and line.startswith('data: '):
-                        try:
-                            data = json.loads(line[6:])
-                            if 'content' in data:
-                                stream += data['content']
-                        except json.JSONDecodeError:
-                            self.logger.debug(f"Incomplete JSON chunk: {line}")
-                            continue
-                
-                # Keep the last potentially incomplete line in buffer
-                buffer = lines[-1]
-            
-            # Process any remaining data in buffer
-            if buffer.strip() and buffer.startswith('data: '):
-                try:
-                    data = json.loads(buffer[6:])
-                    if 'content' in data:
-                        stream += data['content']
-                except json.JSONDecodeError:
-                    self.logger.debug(f"Incomplete final JSON chunk: {buffer}")
-            
-            return stream.strip('"')
-            
-        except Exception as e:
-            self.logger.error(f"Error in stream_response: {e}")
-            raise RuntimeError(f"Error in stream_response: {e}")
+            error = f"Error in get_task_id: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __convert_chat(self, history: list, file_path: str, format: str):
         """
         Convert chat history to specified format while preserving JSON.
-        Supports: textfile, markdown
+        Supports: txt, md
         """
         try:
             base_path = os.path.splitext(file_path)[0]
             task_id = history[0].get('id', 'unknown')
             
-            if format == 'textfile':
-                output = []
+            if format == 'txt':
+                output = [f"Chat History (ID: {task_id})\n\n"]
                 for msg in history:
                     role = msg.get('role', '')
                     content = msg.get('content', '')
@@ -229,8 +197,8 @@ class MindfulClient:
                 with open(f"{base_path}.txt", 'w', encoding='utf-8') as f:
                     f.writelines(output)
                     
-            elif format == 'markdown':
-                output = ["# Chat History\n\n"]
+            elif format == 'md':
+                output = [f"# Chat History (ID: {task_id})\n\n"]
                 for msg in history:
                     role = msg.get('role', '')
                     content = msg.get('content', '')
@@ -254,13 +222,17 @@ class MindfulClient:
             self.logger.info(f"[{task_id}] Successfully converted chat to {format} format")
             
         except Exception as e:
-            self.logger.error(f"Error in convert_chat: {e}")
-            raise RuntimeError(f"Error converting chat to {format}: {e}")
+            error = f"Error in convert_chat: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
     def __save_history(self, history: list):
         """
         Save the chat history to a file organized by date and task ID.
         """
+        if self.save_to is None:
+            return
+            
         try:
             task_id = history[0].get('id', 'unknown')
             
@@ -306,8 +278,89 @@ class MindfulClient:
             self.logger.info(f"[{task_id}] Chat history save process completed")
 
         except Exception as e:
-            self.logger.error(f"[{task_id}] Error in save_history: {e}")
-            raise RuntimeError(f"[{task_id}] Error in save_history: {e}")
+            error = f"[{task_id}] Error in save_history: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
+
+    def __switch_agent(self, agent: str, instruction: str = None):
+        """
+        Switch to a different agent mid-conversation.
+        
+        Parameters:
+        - agent (str): The new agent to use
+        - instruction (str): Optional custom system prompt
+        """
+        try:
+            if instruction:
+                self.logger.info("Custom system prompt provided, switched to custom agent")
+                agent = 'custom'
+            
+            self.__agent = self.__get_agent(agent, instruction)
+            self.logger.info(f"Switched to {agent} agent")
+            return self.__agent
+            
+        except Exception as e:
+            error = f"Error switching agent: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
+
+    def __stream_response(self, response, stream_text=""):
+        """
+        Process the streaming response and return the full response.
+        
+        Parameters:
+        - response: Response object from the API
+        - stream_text: Initial stream content
+        """
+        try:
+            buffer = ""
+            
+            for chunk in response.iter_content(chunk_size=1024):
+                if not chunk:
+                    continue
+                    
+                buffer += chunk.decode('utf-8')
+                lines = buffer.split('\n')
+                
+                for line in lines[:-1]:
+                    if line.strip() and line.startswith('data: '):
+                        try:
+                            data = json.loads(line[6:])
+                            if 'content' in data:
+                                new_content = data['content']
+                                stream_text += new_content
+                                if self.stream_output:
+                                    for char in new_content:
+                                        print(char, end='', flush=True)
+                                        time.sleep(self.stream_delay)
+                        except json.JSONDecodeError:
+                            self.logger.debug(f"Incomplete JSON chunk: {line}")
+                            continue
+                
+                buffer = lines[-1]
+            
+            # Process remaining buffer
+            if buffer.strip() and buffer.startswith('data: '):
+                try:
+                    data = json.loads(buffer[6:])
+                    if 'content' in data:
+                        new_content = data['content']
+                        stream_text += new_content
+                        if self.stream_output:
+                            for char in new_content:
+                                print(char, end='', flush=True)
+                                time.sleep(self.stream_delay)
+                except json.JSONDecodeError:
+                    self.logger.debug(f"Incomplete final JSON chunk: {buffer}")
+            
+            if self.stream_output:
+                print()
+            return stream_text.strip('"')
+            
+        except Exception as e:
+            error = f"Error in stream_response: Unexpected error!"
+            self.logger.error(error)
+            return None
 
     def load_history(self, file_path: str):
         """
@@ -333,45 +386,68 @@ class MindfulClient:
             return history
 
         except Exception as e:
-            self.logger.error(f"Error in load_history: {e}")
-            raise RuntimeError(f"Error in load_history: {e}")
+            error = f"Error in load_history: {e}"
+            self.logger.error(error)
+            raise RuntimeError(error)
 
-    def get_completions(self, prompt, image_path=None, history=None):
+    def get_completions(self, prompt, image_path=None, history=None, agent: str = 'default', instruction: str = None):
         """
         Integrated chat function supporting multimodal conversations (text and images).
-        The system prompt from history (if provided) will be preserved, otherwise uses the initialized system prompt.
         
         Parameters:
         - prompt (str): The user's input prompt
         - image_path (str): Optional path to image file or list of image paths
         - history (list): Optional chat history for continuing conversations
+        - agent (str): Agent to use ('default' or 'custom')
+        - instruction (str): Custom system prompt (will change agent to 'custom')
         """
+        if history is not None and not isinstance(history, list):
+            raise ValueError("History must be a list or None")
+        
+        if image_path is not None and not isinstance(image_path, (str, list)):
+            raise ValueError("image_path must be a string or list")
+        
         try:
             start_time = time.time()
             task_id = None
             
+            # Handle custom instructions
+            if instruction:
+                if agent != 'custom':
+                    self.logger.info("Custom instructions used. Switching to 'custom' agent")
+                agent = 'custom'
+            
+            # Check if agent/instruction has changed from current history
+            agent_changed = False
             if history and len(history) > 0:
-                task_id = history[0].get('id')
-                system_prompt = history[0].get('content', self.__agent)
-                if task_id:
-                    self.logger.info(f"[{task_id}] Using existing task id and system prompt from history")
+                current_system = history[0]['content']
+                new_system = self.__get_agent(agent, instruction if agent == 'custom' else None)
+                agent_changed = current_system != new_system
+                
+                if not agent_changed:
+                    self.logger.info("Using existing agent - no system prompt change needed")
+                else:
+                    self.logger.info("Agent/instruction changed - updating system prompt")
             
-            # Only generate new task_id if we don't have one from history
-            if not task_id:
-                task_id = self.__get_task_id()
-                system_prompt = self.__agent
-                self.logger.info(f"[{task_id}] Created task id with initialized system prompt")
-            
-            if not history:
-                history = [{
-                    "id": task_id,
+            # Only create new history if agent changed or no history exists
+            if agent_changed or not history:
+                system_prompt = self.__get_agent(agent, instruction if agent == 'custom' else None)
+                
+                new_history = [{
+                    "id": self.__get_task_id() if not history else history[0].get('id'),
                     "role": "system",
                     "content": system_prompt,
                     "model": self.__model
                 }]
-                self.logger.info(f"[{task_id}] Initialized chat history with system prompt")
-            else:
-                self.logger.info(f"[{task_id}] Using existing chat history with {len(history)} messages")
+                
+                # Transfer existing conversation messages if they exist
+                if history and len(history) > 1:
+                    new_history.extend([msg for msg in history[1:] if msg['role'] in ('user', 'assistant')])
+                    self.logger.info(f"Transferred {len(new_history)-1} messages to new history with updated agent")
+                
+                history = new_history
+                
+            task_id = history[0]['id']
             
             message_content = []
             
@@ -395,7 +471,7 @@ class MindfulClient:
                         "type": "image_url",
                         "file_url": {"url": image_url}
                     })
-                    self.logger.info(f"[{task_id}] Added image URL to message content: {img_path}")
+                    self.logger.info(f"[{task_id}] Added image to message content: {img_path}")
             
             history.append({
                 "id": task_id,
@@ -403,7 +479,7 @@ class MindfulClient:
                 "content": message_content,
                 "model": self.__model
             })
-            self.logger.info(f"[{task_id}] Added user message to chat history with {len(message_content)} content items")
+            self.logger.info(f"[{task_id}] Added user message to chat history")
             
             data = json.dumps({
                 "id": task_id,
@@ -420,20 +496,238 @@ class MindfulClient:
             self.logger.info(f"[{task_id}] Processing request in {self.timeout} seconds")
             with requests.post(self.__ur, files=files, headers=self.__hd, stream=True, timeout=self.timeout) as response:
                 response.raise_for_status()
-                full_response = self.__stream_response(response)
+                response_text = self.__stream_response(response)
             
             history.append({
                 "id": task_id,
                 "role": "assistant",
-                "content": full_response,
+                "content": response_text,
                 "model": self.__model
             })
             
             self.__save_history(history)
             self.logger.info(f"[{task_id}] Request completed in {time.time() - start_time:.2f} seconds")
             
-            return full_response, history
+            return response_text, history
 
         except Exception as e:
-            self.logger.error(f"[{task_id}] Error in get_completions: {e}")
+            self.logger.error(f"Error in get_completions: Unexpected error!")
             return None, history
+        
+    def interactive_chat(self, agent: str = 'default', instruction: str = None):
+        """
+        Start an interactive chat session in the console.
+        
+        Commands:
+        - /exit: Exit the chat
+        - /reset: Reset the conversation
+        - /agent "agent_name": Change the agent (default/custom)
+        - /image "path" "question" or ["path1", "path2"] "question" - Send image(s) with optional question
+        - /instruction "new instruction": Change the system instruction
+        - /load "path/to/history.json": Load chat history from file
+        - /help: Show available commands
+        
+        Parameters:
+        - agent (str): Starting agent ('default' or 'custom')
+        - instruction (str): Optional custom system prompt (will set agent to 'custom')
+        - stream (bool): If True, streams the response character by character
+        """
+        history = None
+        task_id = None
+        
+        # Initialize with the correct agent prompt
+        current_agent = agent
+        current_instruction = instruction
+        
+        # Ensure we load the correct system prompt at start
+        try:
+            self.__switch_agent(current_agent, current_instruction)
+        except Exception as e:
+            print(f"\nError initializing agent: {e}")
+            return
+
+        def print_help():
+            print("\nAvailable commands:")
+            print("  /exit - Exit the chat")
+            print("  /reset - Reset the conversation")
+            print("  /agent \"agent_name\" - Change the agent (default/custom)")
+            print("  /image \"path\" \"question\" or [\"path1\", \"path2\"] \"question\" - Send image(s) with optional question")
+            print("  /instruction \"new instruction\" - Change system instruction")
+            print("  /load \"path/to/history.json\" - Load chat history from a JSON file")
+            print("  /help - Show this help message")
+            
+            if self.save_to and self.save_as:
+                print(f"\nChat history is saved to: {self.save_to}/*.{self.save_as}\n")
+            else:
+                print("\nWarning: Chat history will not be saved!\n")
+        
+        def parse_quoted_content(text: str) -> str:
+            """Extract content between quotes."""
+            import re
+            match = re.search(r'"([^"]*)"', text)
+            return match.group(1) if match else None
+        
+        def parse_image_command(text: str) -> tuple[Union[str, List[str], None], str]:
+            """Parse image path(s) and question from command."""
+            content = text.strip()
+            
+            # Extract question if present (everything after the last quotation mark pair)
+            question = None
+            path_part = content
+            
+            # Look for quoted question at the end
+            if '"' in content:
+                last_quote_pair = content.rfind('"')
+                second_last_quote = content.rfind('"', 0, last_quote_pair)
+                if second_last_quote != -1:
+                    question = content[second_last_quote + 1:last_quote_pair].strip()
+                    path_part = content[:second_last_quote].strip()
+            
+            # Parse image paths
+            if path_part.startswith('['):
+                try:
+                    paths = ast.literal_eval(path_part)
+                    if isinstance(paths, list) and all(isinstance(p, str) for p in paths):
+                        return paths, question or "Please analyze this image"
+                    print("Invalid image path list format")
+                    return None, None
+                except:
+                    print("Invalid image path list format")
+                    return None, None
+            else:
+                # Single path
+                path = path_part.strip('"').strip()
+                if path and os.path.exists(path):
+                    return path, question or "Please analyze this image"
+                print(f"Image file not found: {path}")
+                return None, None
+
+        def reset_chat():
+            nonlocal history, task_id
+            history = None
+            task_id = None
+            print("\nChat reset. Starting new conversation...")
+            if current_agent != 'default' or current_instruction:
+                print(f"Current agent: {current_agent}")
+                if current_instruction:
+                    print(f"Current instruction: {current_instruction}")
+            print()
+
+        print(f"*** Welcome to Mindful Client {self.version} ***")
+        print("Type '/help' for available commands\n")
+        
+        if self.save_to and self.save_as:
+            print(f"Chat history will be saved to: '{self.save_to}' as '*.{self.save_as}'")
+        else:
+            print("Warning: Chat history will not be saved!")
+            
+        print("Type your message or command below:\n")
+
+        while True:
+            try:
+                user_input = input("You: ").strip()
+                
+                # Handle commands
+                if user_input.lower() == '/exit':
+                    print("Ending chat session...")
+                    if task_id:
+                        print(f"Chat history saved with ID: {task_id}")
+                    break
+                    
+                elif user_input.lower() == '/help':
+                    print_help()
+                    continue
+                    
+                elif user_input.lower() == '/reset':
+                    reset_chat()
+                    continue
+                    
+                elif user_input.lower().startswith('/agent'):
+                    new_agent = parse_quoted_content(user_input[6:])
+                    if new_agent in ['default', 'custom']:
+                        current_agent = new_agent
+                        # Update the agent in the client
+                        self.__switch_agent(new_agent, current_instruction)
+                        print(f"Switched to agent: {new_agent}")
+                    else:
+                        print("Invalid agent. Available agents: default, custom")
+                    continue
+                    
+                elif user_input.lower().startswith('/image'):
+                    image_content = user_input[6:].strip()
+                    image_paths, question = parse_image_command(image_content)
+                    if image_paths:
+                        # Use current agent/instruction without switching
+                        response, history = self.get_completions(
+                            prompt=question,
+                            image_path=image_paths,
+                            history=history,
+                            agent=current_agent,
+                            instruction=current_instruction
+                        )
+                        if response:
+                            print(f"\nAssistant: {response}\n")
+                        if not task_id and history:
+                            task_id = history[0].get('id')
+                            print(f"Chat ID: {task_id}\n")
+                    continue
+                    
+                elif user_input.lower().startswith('/instruction'):
+                    new_instruction = parse_quoted_content(user_input[12:])
+                    if new_instruction:
+                        current_instruction = new_instruction
+                        current_agent = 'custom'
+                        # Update the agent with new instruction without resetting history
+                        self.__switch_agent('custom', new_instruction)
+                        print(f"Updated system instruction.")
+                    continue
+                    
+                elif user_input.lower().startswith('/load'):
+                    history_path = parse_quoted_content(user_input[5:])
+                    if history_path:
+                        try:
+                            loaded_history = self.load_history(history_path)
+                            if loaded_history:
+                                history = loaded_history
+                                task_id = history[0].get('id')
+                                # Update current agent/instruction from loaded history
+                                system_msg = history[0].get('content', '')
+                                if system_msg == self.__get_agent('custom', current_instruction):
+                                    current_agent = 'custom'
+                                else:
+                                    current_agent = 'default'
+                                print(f"\nLoaded chat history with ID: {task_id}")
+                                print(f"Current agent: {current_agent}")
+                                if current_agent == 'custom':
+                                    print(f"Current instruction: {current_instruction}\n")
+                        except Exception as e:
+                            print(f"\nError loading history: {str(e)}")
+                    continue
+                    
+                # Regular message
+                if user_input:
+                    if self.stream_output:
+                        print("\nAssistant: ", end='', flush=True)
+                    response, history = self.get_completions(
+                        prompt=user_input,
+                        history=history,
+                        agent=current_agent,
+                        instruction=current_instruction
+                    )
+                    if response and not self.stream_output:
+                        print(f"\nAssistant: {response}\n")
+                    elif response and self.stream_output:
+                        print()
+                    if not task_id and history:
+                        task_id = history[0].get('id')
+                        print(f"Chat ID: {task_id}\n")
+                
+            except KeyboardInterrupt:
+                print("\nEnding chat session...")
+                if task_id and self.save_to and self.save_as:
+                    print(f"Chat history saved with ID: {task_id}")
+                break
+                
+            except Exception as e:
+                print(f"\nError: {str(e)}")
+                print("Try again or type '/exit' to end the chat\n")
