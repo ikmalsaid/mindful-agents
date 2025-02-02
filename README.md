@@ -31,8 +31,9 @@ client = MindfulClient(
     stream_output=True # Enable streaming output
     stream_delay=0.01 # Delay between characters during streaming
 )   
+
+# Note that when saving in TXT or Markdown format, the client will create both the specified format file AND a JSON file to preserve all conversation metadata.
 ```
-Note: When saving in TXT or Markdown format, the client will create both the specified format file AND a JSON file to preserve all conversation metadata.
 
 ### Chat Completion
 

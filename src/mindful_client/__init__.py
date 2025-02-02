@@ -12,19 +12,19 @@ from datetime import datetime
 from typing import Union, List
 
 class MindfulClient:
-    def __init__(self, log_on=False, log_to=None, model='omniverse', save_to='outputs', save_as='json',
+    def __init__(self, mode='default', log_on=False, log_to=None, model='omniverse', save_to='outputs', save_as='json',
                  timeout=60, stream_output=True, stream_delay=0.01):
         """Initialize the MindfulClient.
         
         Parameters:
-        - log_on (bool): Enable logging
-        - log_to (str): The file to log to (if log_on is True)
-        - model (str): The agent model to use
+        - mode    (str): The mode to use ('default', 'chat', 'api', 'webui')
+        - log_on (bool): Enable logging.
+        - log_to  (str): Directory to save logs.
         - save_to (str): The directory to save the chat history (None to disable saving)
         - save_as (str): The format to save the chat history ('json', 'txt', 'md')
         - timeout (int): The timeout for each request
         - stream_output (bool): Stream output characters as they arrive
-        - stream_delay (float): Delay between characters during streaming (default: 0.01s or 10ms)
+        - stream_delay (float): Delay between characters during streaming (default: 0.01s)
         """
         self.logger = setup_logger(
             name=self.__class__.__name__,
@@ -42,9 +42,13 @@ class MindfulClient:
         
         self.__init_checks(save_to, save_as, model, timeout)        
         self.logger.info("Mindful Client is ready!")
+        
+        if mode != "default":
+            self.__startup_mode(mode)
 
     def __init_checks(self, save_to: str, save_as: str, model: str, timeout: int):
         """
+
         Initialize essential checks.
         """
         try:
@@ -70,10 +74,30 @@ class MindfulClient:
             self.timeout = timeout
         
         except Exception as e:
-            error = f"Error in init_modules: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in init_checks: {e}")
+            raise
+
+    def __startup_mode(self, mode: str):
+        """
+        Startup mode for api or webui with default values.
+        """
+        try:
+            if mode == "webui":
+                self.start_wui()
+            
+            elif mode == "api":
+                self.start_api()
+            
+            elif mode == "chat":
+                self.start_chat()
+            
+            else:
+                raise ValueError(f"Invalid startup mode: {mode}")
         
+        except Exception as e:
+            self.logger.error(f"Error in startup_mode: {str(e)}")
+            raise
+    
     def __online_check(self, url: str = 'https://www.google.com', timeout: int = 10):
         """
         Check if there is an active internet connection.
@@ -82,11 +106,10 @@ class MindfulClient:
             requests.get(url, timeout=timeout)
         
         except Exception:
-            error = "No internet! Please check your network connection."
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error("No internet! Please check your network connection.")
+            raise
 
-    def __load_preset(self, preset_path='__mf__.py'):
+    def __load_preset(self, preset_path='mf.py'):
         """
         Load the preset file.
         """
@@ -97,9 +120,8 @@ class MindfulClient:
                 self.__preset = json.loads(content)
         
         except Exception as e:
-            error = f"Error in load_preset: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in load_preset: {e}")
+            raise
 
     def __get_agent(self, agent: str, instruction: str = None):
         """
@@ -115,9 +137,8 @@ class MindfulClient:
             return agent_template
             
         except Exception as e:
-            error = f"Error in get_agent: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in get_agent: {e}")
+            raise
 
     def __load_locale(self):
         """
@@ -129,9 +150,8 @@ class MindfulClient:
             self.__up = base64.b64decode(self.__preset["locale"][2]).decode('utf-8')
             
         except Exception as e:
-            error = f"Error in load_locale: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in load_locale: {e}")
+            raise
 
     def __upload_image(self, image_path: str) -> str:
         """
@@ -146,9 +166,9 @@ class MindfulClient:
                 return result
         
         except Exception as e:
-            error = f"Error in upload_image: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in upload_image: {e}")
+            raise
+
 
     def __get_task_id(self):
         """
@@ -163,9 +183,8 @@ class MindfulClient:
             return task_id
         
         except Exception as e:
-            error = f"Error in get_task_id: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in get_task_id: {e}")
+            raise
 
     def __convert_chat(self, history: list, file_path: str, format: str):
         """
@@ -222,9 +241,9 @@ class MindfulClient:
             self.logger.info(f"[{task_id}] Successfully converted chat to {format} format")
             
         except Exception as e:
-            error = f"Error in convert_chat: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in convert_chat: {e}")
+            raise
+
 
     def __save_history(self, history: list):
         """
@@ -278,9 +297,8 @@ class MindfulClient:
             self.logger.info(f"[{task_id}] Chat history save process completed")
 
         except Exception as e:
-            error = f"[{task_id}] Error in save_history: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"[{task_id}] Error in save_history: {e}")
+            raise
 
     def __switch_agent(self, agent: str, instruction: str = None):
         """
@@ -300,9 +318,8 @@ class MindfulClient:
             return self.__agent
             
         except Exception as e:
-            error = f"Error switching agent: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error switching agent: {e}")
+            raise
 
     def __stream_response(self, response, stream_text=""):
         """
@@ -358,8 +375,7 @@ class MindfulClient:
             return stream_text.strip('"')
             
         except Exception as e:
-            error = f"Error in stream_response: Unexpected error!"
-            self.logger.error(error)
+            self.logger.error(f"Error in stream_response: Unexpected error!")
             return None
 
     def load_history(self, file_path: str):
@@ -386,9 +402,8 @@ class MindfulClient:
             return history
 
         except Exception as e:
-            error = f"Error in load_history: {e}"
-            self.logger.error(error)
-            raise RuntimeError(error)
+            self.logger.error(f"Error in load_history: {e}")
+            raise
 
     def get_completions(self, prompt, image_path=None, history=None, agent: str = 'default', instruction: str = None):
         """
@@ -514,7 +529,7 @@ class MindfulClient:
             self.logger.error(f"Error in get_completions: Unexpected error!")
             return None, history
         
-    def interactive_chat(self, agent: str = 'default', instruction: str = None):
+    def start_chat(self, agent: str = 'default', instruction: str = None):
         """
         Start an interactive chat session in the console.
         
@@ -724,7 +739,7 @@ class MindfulClient:
                 
             except KeyboardInterrupt:
                 print("\nEnding chat session...")
-                if task_id and self.save_to and self.save_as:
+                if task_id and self.save_to:
                     print(f"Chat history saved with ID: {task_id}")
                 break
                 
