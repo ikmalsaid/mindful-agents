@@ -7,40 +7,37 @@ import base64
 import requests
 import tempfile
 from importlib import resources
-from colorpaws import setup_logger
+from colorpaws import configure
 from datetime import datetime
 from typing import Union, List
+import inspect
 
 class MindfulClient:
-    def __init__(self, mode='default', log_on=False, log_to=None, model='omniverse', save_to='outputs', save_as='json',
-                 timeout=60, stream_output=True, stream_delay=0.01):
-        """Initialize the MindfulClient.
+    def __init__(self, mode='default', log_on=False, log_to=None, model='omni',
+                 save_to='outputs', save_as='json', timeout=60):
+        """
+        Initialize the MindfulClient
         
         Parameters:
-        - mode    (str): The mode to use ('default', 'chat', 'api', 'webui')
-        - log_on (bool): Enable logging.
-        - log_to  (str): Directory to save logs.
-        - save_to (str): The directory to save the chat history (None to disable saving)
-        - save_as (str): The format to save the chat history ('json', 'txt', 'md')
-        - timeout (int): The timeout for each request
-        - stream_output (bool): Stream output characters as they arrive
-        - stream_delay (float): Delay between characters during streaming (default: 0.01s)
+        - mode         (str): The mode to use ('default', 'chat', 'api', 'webui')
+        - log_on      (bool): Enable logging.
+        - log_to       (str): Directory to save logs.
+        - save_to      (str): The directory to save the chat history (None to disable saving)
+        - save_as      (str): The format to save the chat history ('json', 'txt', 'md')
+        - timeout      (int): The timeout for each request
+        - instructions (str): Custom system prompt to use (None to use default)
         """
-        self.logger = setup_logger(
+        self.logger = configure(
             name=self.__class__.__name__,
             log_on=log_on,
             log_to=log_to
         )
 
-        self.version = "25.1"
-        self.stream_output = stream_output
-        self.stream_delay = stream_delay
-
         self.__online_check()
         self.__load_preset()
         self.__load_locale()
         
-        self.__init_checks(save_to, save_as, model, timeout)        
+        self.__init_checks(save_to, save_as, model, timeout)
         self.logger.info("Mindful Client is ready!")
         
         if mode != "default":
@@ -48,7 +45,6 @@ class MindfulClient:
 
     def __init_checks(self, save_to: str, save_as: str, model: str, timeout: int):
         """
-
         Initialize essential checks.
         """
         try:
@@ -82,10 +78,7 @@ class MindfulClient:
         Startup mode for api or webui with default values.
         """
         try:
-            if mode == "webui":
-                self.start_wui()
-            
-            elif mode == "api":
+            if mode == "api":
                 self.start_api()
             
             elif mode == "chat":
@@ -109,7 +102,7 @@ class MindfulClient:
             self.logger.error("No internet! Please check your network connection.")
             raise
 
-    def __load_preset(self, preset_path='mf.py'):
+    def __load_preset(self, preset_path='data.py'):
         """
         Load the preset file.
         """
@@ -282,10 +275,8 @@ class MindfulClient:
             else:
                 self.logger.info(f"[{task_id}] Creating new chat history file")
 
-
             with open(file_path, 'w') as f:
                 json.dump(history, f, indent=2)
-            self.logger.info(f"[{task_id}] Successfully saved JSON chat history")
             
             try:
                 if self.save_as != 'json':
@@ -300,7 +291,7 @@ class MindfulClient:
             self.logger.error(f"[{task_id}] Error in save_history: {e}")
             raise
 
-    def __switch_agent(self, agent: str, instruction: str = None):
+    def __switch_agent(self, agent: str, instruction: str = None, task_id: str = None):
         """
         Switch to a different agent mid-conversation.
         
@@ -310,15 +301,15 @@ class MindfulClient:
         """
         try:
             if instruction:
-                self.logger.info("Custom system prompt provided, switched to custom agent")
+                self.logger.info(f"[{task_id}] Custom system prompt provided, switched to custom agent")
                 agent = 'custom'
             
             self.__agent = self.__get_agent(agent, instruction)
-            self.logger.info(f"Switched to {agent} agent")
+            self.logger.info(f"[{task_id}] Switched to {agent} agent")
             return self.__agent
             
         except Exception as e:
-            self.logger.error(f"Error switching agent: {e}")
+            self.logger.error(f"[{task_id}] Error switching agent: {e}")
             raise
 
     def __stream_response(self, response, stream_text=""):
@@ -346,34 +337,23 @@ class MindfulClient:
                             if 'content' in data:
                                 new_content = data['content']
                                 stream_text += new_content
-                                if self.stream_output:
-                                    for char in new_content:
-                                        print(char, end='', flush=True)
-                                        time.sleep(self.stream_delay)
+                        
                         except json.JSONDecodeError:
                             self.logger.debug(f"Incomplete JSON chunk: {line}")
                             continue
                 
                 buffer = lines[-1]
             
-            # Process remaining buffer
-            if buffer.strip() and buffer.startswith('data: '):
-                try:
-                    data = json.loads(buffer[6:])
-                    if 'content' in data:
-                        new_content = data['content']
-                        stream_text += new_content
-                        if self.stream_output:
-                            for char in new_content:
-                                print(char, end='', flush=True)
-                                time.sleep(self.stream_delay)
-                except json.JSONDecodeError:
-                    self.logger.debug(f"Incomplete final JSON chunk: {buffer}")
+            filter_strings = [
+                "Generating an image based on the user's prompt",
+                "Searching the internet for relevant information"
+            ]
             
-            if self.stream_output:
-                print()
-            return stream_text.strip('"')
+            for filter_str in filter_strings:
+                stream_text = stream_text.replace(filter_str, '')
             
+            return stream_text
+        
         except Exception as e:
             self.logger.error(f"Error in stream_response: Unexpected error!")
             return None
@@ -405,7 +385,8 @@ class MindfulClient:
             self.logger.error(f"Error in load_history: {e}")
             raise
 
-    def get_completions(self, prompt, image_path=None, history=None, agent: str = 'default', instruction: str = None):
+    def get_completions(self, prompt, image_path=None, history=None, agent: str = 'default',
+                        instruction: str = None, chat_id: str = None):
         """
         Integrated chat function supporting multimodal conversations (text and images).
         
@@ -415,6 +396,7 @@ class MindfulClient:
         - history (list): Optional chat history for continuing conversations
         - agent (str): Agent to use ('default' or 'custom')
         - instruction (str): Custom system prompt (will change agent to 'custom')
+        - chat_id (str): Optional chat ID for interactive sessions
         """
         if history is not None and not isinstance(history, list):
             raise ValueError("History must be a list or None")
@@ -424,12 +406,12 @@ class MindfulClient:
         
         try:
             start_time = time.time()
-            task_id = None
+            task_id = chat_id or self.__get_task_id()
             
             # Handle custom instructions
             if instruction:
                 if agent != 'custom':
-                    self.logger.info("Custom instructions used. Switching to 'custom' agent")
+                    self.logger.info(f"[{task_id}] Custom instructions used. Switching to 'custom' agent")
                 agent = 'custom'
             
             # Check if agent/instruction has changed from current history
@@ -440,16 +422,16 @@ class MindfulClient:
                 agent_changed = current_system != new_system
                 
                 if not agent_changed:
-                    self.logger.info("Using existing agent - no system prompt change needed")
+                    self.logger.info(f"[{task_id}] Using existing agent - no system prompt change needed")
                 else:
-                    self.logger.info("Agent/instruction changed - updating system prompt")
+                    self.logger.info(f"[{task_id}] Agent/instruction changed - updating system prompt")
             
             # Only create new history if agent changed or no history exists
             if agent_changed or not history:
                 system_prompt = self.__get_agent(agent, instruction if agent == 'custom' else None)
                 
                 new_history = [{
-                    "id": self.__get_task_id() if not history else history[0].get('id'),
+                    "id": task_id if not history else history[0].get('id'),
                     "role": "system",
                     "content": system_prompt,
                     "model": self.__model
@@ -458,12 +440,18 @@ class MindfulClient:
                 # Transfer existing conversation messages if they exist
                 if history and len(history) > 1:
                     new_history.extend([msg for msg in history[1:] if msg['role'] in ('user', 'assistant')])
-                    self.logger.info(f"Transferred {len(new_history)-1} messages to new history with updated agent")
-                
+                    self.logger.info(f"[{task_id}] Transferred {len(new_history)-1} messages to new history with updated agent")
+                else:
+                    # Only add assistant acknowledgment for fresh conversations
+                    new_history.append({
+                        "id": task_id,
+                        "role": "assistant",
+                        "content": "Perfect! From now on, I will act and speak in this tone.",
+                        "model": self.__model
+                    })
                 history = new_history
                 
             task_id = history[0]['id']
-            
             message_content = []
             
             if prompt:
@@ -526,7 +514,7 @@ class MindfulClient:
             return response_text, history
 
         except Exception as e:
-            self.logger.error(f"Error in get_completions: Unexpected error!")
+            self.logger.error(f"[{task_id}] Error in get_completions: Unexpected error!")
             return None, history
         
     def start_chat(self, agent: str = 'default', instruction: str = None):
@@ -545,36 +533,46 @@ class MindfulClient:
         Parameters:
         - agent (str): Starting agent ('default' or 'custom')
         - instruction (str): Optional custom system prompt (will set agent to 'custom')
-        - stream (bool): If True, streams the response character by character
         """
         history = None
-        task_id = None
+        task_id = self.__get_task_id()
         
-        # Initialize with the correct agent prompt
         current_agent = agent
         current_instruction = instruction
         
-        # Ensure we load the correct system prompt at start
         try:
-            self.__switch_agent(current_agent, current_instruction)
+            self.__switch_agent(current_agent, current_instruction, task_id)
         except Exception as e:
-            print(f"\nError initializing agent: {e}")
+            print(f"Error initializing agent: {e}")
             return
 
         def print_help():
-            print("\nAvailable commands:")
-            print("  /exit - Exit the chat")
-            print("  /reset - Reset the conversation")
-            print("  /agent \"agent_name\" - Change the agent (default/custom)")
-            print("  /image \"path\" \"question\" or [\"path1\", \"path2\"] \"question\" - Send image(s) with optional question")
-            print("  /instruction \"new instruction\" - Change system instruction")
-            print("  /load \"path/to/history.json\" - Load chat history from a JSON file")
-            print("  /help - Show this help message")
+            print("\nHere are the available commands:\n")
             
-            if self.save_to and self.save_as:
-                print(f"\nChat history is saved to: {self.save_to}/*.{self.save_as}\n")
+            # Basic Commands
+            print("Basic Commands:")
+            print("  📝 /help     - Show this help message")
+            print("  🚪 /exit     - Exit the chat")
+            print("  🔄 /reset    - Reset the conversation")
+            
+            # Agent & System Commands
+            print("\nSystem:")
+            print("  ⚙️  /instruction \"new instruction\" - Change system instruction")
+            
+            # Media & History
+            print("\nMedia & History:")
+            print("  🖼️  /image \"path\" \"question\"       - Send single image with question")
+            print("  🖼️  /image [\"path1\", \"path2\"] \"question\"  - Send multiple images with question")
+            print("  📂 /load \"path/to/history.json\"   - Load chat history from file")
+            
+            # Save Information
+            print("\nSave Information:")
+            print(f"  🔎 Current Chat ID: {task_id}")
+            if self.save_to:
+                print(f"  💾 Chat history is saved to: '{self.save_to}' as '{task_id}.{self.save_as}'")
             else:
-                print("\nWarning: Chat history will not be saved!\n")
+                print("  ⚠️  Warning: Chat history will not be saved!")
+            print("\n------")
         
         def parse_quoted_content(text: str) -> str:
             """Extract content between quotes."""
@@ -620,33 +618,40 @@ class MindfulClient:
         def reset_chat():
             nonlocal history, task_id
             history = None
-            task_id = None
-            print("\nChat reset. Starting new conversation...")
+            task_id = self.__get_task_id()
+            print("Chat reset. Starting new conversation...")
+            print(f"New Chat ID: {task_id}")
             if current_agent != 'default' or current_instruction:
                 print(f"Current agent: {current_agent}")
                 if current_instruction:
                     print(f"Current instruction: {current_instruction}")
-            print()
+            print("------")
 
-        print(f"*** Welcome to Mindful Client {self.version} ***")
-        print("Type '/help' for available commands\n")
-        
-        if self.save_to and self.save_as:
-            print(f"Chat history will be saved to: '{self.save_to}' as '*.{self.save_as}'")
+        def end_chat():
+            print("Ending chat session...")
+            if task_id and self.save_to:
+                print(f"Chat history saved at '{self.save_to}' as '{task_id}.{self.save_as}'")
+
+        print(f"*** Welcome to Mindful Client ***")
+        print(f"Chat ID: {task_id}")  # Show task ID at start
+        print("Type '/help' for available commands")
+        print("------")
+
+        if self.save_to:
+            print(f"Chat history is saved to '{self.save_to}' as '{task_id}.{self.save_as}'")
         else:
             print("Warning: Chat history will not be saved!")
-            
-        print("Type your message or command below:\n")
+
+        print("To begin, type your message or command below:")
+        print("------")
 
         while True:
             try:
-                user_input = input("You: ").strip()
+                user_input = input("You 🧑: ").strip()
                 
                 # Handle commands
                 if user_input.lower() == '/exit':
-                    print("Ending chat session...")
-                    if task_id:
-                        print(f"Chat history saved with ID: {task_id}")
+                    end_chat()
                     break
                     
                 elif user_input.lower() == '/help':
@@ -655,17 +660,6 @@ class MindfulClient:
                     
                 elif user_input.lower() == '/reset':
                     reset_chat()
-                    continue
-                    
-                elif user_input.lower().startswith('/agent'):
-                    new_agent = parse_quoted_content(user_input[6:])
-                    if new_agent in ['default', 'custom']:
-                        current_agent = new_agent
-                        # Update the agent in the client
-                        self.__switch_agent(new_agent, current_instruction)
-                        print(f"Switched to agent: {new_agent}")
-                    else:
-                        print("Invalid agent. Available agents: default, custom")
                     continue
                     
                 elif user_input.lower().startswith('/image'):
@@ -678,13 +672,18 @@ class MindfulClient:
                             image_path=image_paths,
                             history=history,
                             agent=current_agent,
-                            instruction=current_instruction
+                            instruction=current_instruction,
+                            chat_id=task_id
                         )
                         if response:
-                            print(f"\nAssistant: {response}\n")
-                        if not task_id and history:
-                            task_id = history[0].get('id')
-                            print(f"Chat ID: {task_id}\n")
+                            print(f"\nMindful 🤖: {response}")
+                            print("------")  # First separator after response
+                            
+                            if not task_id and history:
+                                task_id = history[0].get('id')
+                                print(f"Current chat ID: {task_id}")
+                                print("------")  # Second separator after chat ID
+                            print()  # Add extra line break before next prompt
                     continue
                     
                 elif user_input.lower().startswith('/instruction'):
@@ -693,8 +692,9 @@ class MindfulClient:
                         current_instruction = new_instruction
                         current_agent = 'custom'
                         # Update the agent with new instruction without resetting history
-                        self.__switch_agent('custom', new_instruction)
+                        self.__switch_agent('custom', new_instruction, task_id)
                         print(f"Updated system instruction.")
+                        print("------")
                     continue
                     
                 elif user_input.lower().startswith('/load'):
@@ -705,44 +705,61 @@ class MindfulClient:
                             if loaded_history:
                                 history = loaded_history
                                 task_id = history[0].get('id')
-                                # Update current agent/instruction from loaded history
+                                
+                                # Extract system message and determine agent type
                                 system_msg = history[0].get('content', '')
-                                if system_msg == self.__get_agent('custom', current_instruction):
-                                    current_agent = 'custom'
-                                else:
+                                default_system = self.__get_agent(agent, instruction)
+                                
+                                if system_msg == default_system:
                                     current_agent = 'default'
-                                print(f"\nLoaded chat history with ID: {task_id}")
-                                print(f"Current agent: {current_agent}")
+                                    current_instruction = None
+                                else:
+                                    current_agent = 'custom'
+                                    current_instruction = system_msg
+                                
+                                print(f"Loaded chat history with ID: {task_id}")
                                 if current_agent == 'custom':
-                                    print(f"Current instruction: {current_instruction}\n")
+                                    print(f"Current instruction: {current_instruction}")
+                                print("------")
                         except Exception as e:
-                            print(f"\nError loading history: {str(e)}")
+                            print(f"Error loading history: {str(e)}")
                     continue
                     
                 # Regular message
                 if user_input:
-                    if self.stream_output:
-                        print("\nAssistant: ", end='', flush=True)
                     response, history = self.get_completions(
                         prompt=user_input,
                         history=history,
                         agent=current_agent,
-                        instruction=current_instruction
+                        instruction=current_instruction,
+                        chat_id=task_id
                     )
-                    if response and not self.stream_output:
-                        print(f"\nAssistant: {response}\n")
-                    elif response and self.stream_output:
-                        print()
-                    if not task_id and history:
-                        task_id = history[0].get('id')
-                        print(f"Chat ID: {task_id}\n")
+                    if response:
+                        print(f"\nMindful 🤖: {response}")
+                        print("------")
                 
             except KeyboardInterrupt:
-                print("\nEnding chat session...")
-                if task_id and self.save_to:
-                    print(f"Chat history saved with ID: {task_id}")
+                end_chat()
                 break
                 
             except Exception as e:
-                print(f"\nError: {str(e)}")
-                print("Try again or type '/exit' to end the chat\n")
+                print(f"Error: {str(e)}")
+                print("Try again or type '/exit' to end the chat")
+
+    def start_api(self, host: str = "0.0.0.0", port: int = 6463, debug: bool = False):
+        """
+        Start the API server with all endpoints.
+
+        Parameters:
+        - host (str): Host to run the server on (default: "0.0.0.0")
+        - port (int): Port to run the server on (default: 6463)
+        - debug (bool): Enable Flask debug mode (default: False)
+        """
+        try:
+            from .api import MindfulWebAPI
+            self.save_to = None
+            MindfulWebAPI(self, host=host, port=port, debug=debug)
+        
+        except Exception as e:
+            self.logger.error(f"WebAPI error: {str(e)}")
+            raise
