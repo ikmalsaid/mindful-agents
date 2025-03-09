@@ -4,22 +4,23 @@ import json
 import uuid
 import time
 import base64
+import inspect
 import requests
 import tempfile
-from importlib import resources
-from colorpaws import configure
 from datetime import datetime
 from typing import Union, List
-import inspect
+from importlib import resources
+from colorpaws import configure
 
-class MindfulClient:
+class MindfulAgents:
+    """Copyright (C) 2025 Ikmal Said. All rights reserved."""
     def __init__(self, mode='default', log_on=False, log_to=None, model='omni',
                  save_to='outputs', save_as='json', timeout=60):
         """
-        Initialize the MindfulClient
+        Initialize the MindfulAgents
         
         Parameters:
-        - mode         (str): The mode to use ('default', 'chat', 'api', 'webui')
+        - mode         (str): The mode to use ('default', 'chat', 'api')
         - log_on      (bool): Enable logging.
         - log_to       (str): Directory to save logs.
         - save_to      (str): The directory to save the chat history (None to disable saving)
@@ -38,7 +39,7 @@ class MindfulClient:
         self.__load_locale()
         
         self.__init_checks(save_to, save_as, model, timeout)
-        self.logger.info("Mindful Client is ready!")
+        self.logger.info(f"{self.__class__.__name__} is ready!")
         
         if mode != "default":
             self.__startup_mode(mode)
@@ -551,27 +552,27 @@ class MindfulClient:
             
             # Basic Commands
             print("Basic Commands:")
-            print("  📝 /help     - Show this help message")
-            print("  🚪 /exit     - Exit the chat")
-            print("  🔄 /reset    - Reset the conversation")
+            print("  /help     - Show this help message")
+            print("  /exit     - Exit the chat")
+            print("  /reset    - Reset the conversation")
             
             # Agent & System Commands
             print("\nSystem:")
-            print("  ⚙️  /instruction \"new instruction\" - Change system instruction")
+            print("  /instruction \"new instruction\" - Change system instruction")
             
             # Media & History
             print("\nMedia & History:")
-            print("  🖼️  /image \"path\" \"question\"       - Send single image with question")
-            print("  🖼️  /image [\"path1\", \"path2\"] \"question\"  - Send multiple images with question")
-            print("  📂 /load \"path/to/history.json\"   - Load chat history from file")
+            print("  /image \"path\" \"question\"       - Send single image with question")
+            print("  /image [\"path1\", \"path2\"] \"question\"  - Send multiple images with question")
+            print("  /load \"path/to/history.json\"   - Load chat history from file")
             
             # Save Information
             print("\nSave Information:")
-            print(f"  🔎 Current Chat ID: {task_id}")
+            print(f"  Current Chat ID: {task_id}")
             if self.save_to:
-                print(f"  💾 Chat history is saved to: '{self.save_to}' as '{task_id}.{self.save_as}'")
+                print(f"  Chat history is saved to: '{self.save_to}' as '{task_id}.{self.save_as}'")
             else:
-                print("  ⚠️  Warning: Chat history will not be saved!")
+                print(f"  Warning: Chat history will not be saved!")
             print("\n------")
         
         def parse_quoted_content(text: str) -> str:
@@ -632,7 +633,7 @@ class MindfulClient:
             if task_id and self.save_to:
                 print(f"Chat history saved at '{self.save_to}' as '{task_id}.{self.save_as}'")
 
-        print(f"*** Welcome to Mindful Client ***")
+        print(f"*** Welcome to {self.__class__.__name__} ***")
         print(f"Chat ID: {task_id}")  # Show task ID at start
         print("Type '/help' for available commands")
         print("------")

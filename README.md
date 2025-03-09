@@ -1,116 +1,127 @@
-# mindful-client
+# mindful-agents
 
-A comprehensive toolkit for interacting with large language models featuring vision capabilities and customizable agents for the edge.
+A powerful toolkit for interacting with large language models featuring vision capabilities and customizable agents.
 
 ## Installation
-Install via pip:
-```python
-pip install mindful-client
+
+```bash
+pip install mindful-agents
 ```
 
 ## Key Features
 
-- Text and image-based conversations
-- Customizable agents and system prompts
-- Interactive chat mode with command support
-- Conversation history management
-- Multiple export formats (JSON, TXT, Markdown)
+- 🤖 **Multimodal Conversations**
+  - Text and image-based chat
+  - Support for multiple images
+  - Customizable system prompts
+- 🔄 **Flexible Integration**
+  - Interactive CLI chat
+  - REST API server
+  - Python library
+- 💾 **History Management**
+  - Save conversations (JSON/TXT/Markdown)
+  - Load and continue chats
+  - Organized by date and session
 
-## Core Functions
+## Usage
 
-### Client Initialization
+### Python Library
 
 ```python
-client = MindfulClient(
+from mindful_agents import MindfulAgents
+
+# Initialize
+mindful = MindfulAgents(
+    mode='default', # Mode (default/chat/api)
     log_on=True, # Enable logging
-    log_to='logs', # Log file path
-    model='omniverse', # Model selection
-    save_to='outputs', # History save directory
-    save_as='json', # History format (json/txt/md)
+    log_to='logs', # Log directory
+    model='omni', # Model selection
+    save_to='outputs', # History save path
+    save_as='json', # Save format (json/txt/md)
     timeout=60 # Request timeout
-    stream_output=True # Enable streaming output
-    stream_delay=0.01 # Delay between characters during streaming
-)   
+)
 
-# Note that when saving in TXT or Markdown format, the client will create both the specified format file AND a JSON file to preserve all conversation metadata.
-```
-
-### Chat Completion
-
-```python
-# Basic text completion
-response, history = client.get_completions(
-    prompt="What is the capital of Malaysia?",
-    stream=True # Enable streaming response
+# Text chat
+response, history = mindful.get_completions(
+    prompt="Your question here",
+    agent='default',          # Agent type
+    instruction=None,         # Custom system prompt
+    history=None,            # Optional chat history
+    chat_id=None             # Optional chat ID
 )
 
 # Image analysis
-response, history = client.get_completions(
-    prompt="What's in this image?",
-    image_path="path/to/image.jpg"
+response, history = mindful.get_completions(
+    prompt="Analyze this image",
+    image_path="image.jpg", # Single image
+    # OR
+    image_path=["img1.jpg", "img2.jpg"],  # Multiple images
+    agent='default', # Agent type
+    instruction=None, # Custom system prompt
+    history=None, # Optional chat history
+    chat_id=None # Optional chat ID
 )
 
-# Multiple images
-response, history = client.get_completions(
-    prompt="Compare these images",
-    image_path=["image1.jpg", "image2.jpg"]
-)
+# Load chat history
+history = mindful.load_history("path/to/history.json")
 ```
 
-### Chat History Management
+### Interactive CLI
+
+Start the chat interface:
 
 ```python
-# Load existing chat history
-loaded_history = client.load_history("path/to/history.json")
-
-# Continue conversation with loaded history
-response, updated_history = client.get_completions(
-    prompt="Next question",
-    history=loaded_history
+mindful = MindfulAgents(mode='chat')
+# OR
+mindful = MindfulAgents()
+mindful.start_chat(
+    agent='default', # Agent type
+    instruction=None # Custom system prompt
 )
 ```
 
-### Interactive Chat
+Available commands:
+- `/exit` - Exit chat
+- `/reset` - Reset conversation
+- `/image "path" "question"` - Send image
+- `/image ["path1", "path2"] "question"` - Send multiple images
+- `/instruction "new prompt"` - Change system prompt
+- `/load "history.json"` - Load chat history
+- `/help` - Show commands
+
+### REST API
+
+Start the Flask API server:
 
 ```python
-client.interactive_chat(
-    instruction='You are a helpful assistant.' # Optional: Custom instruction
-    stream=True # Optional: Enable streaming response
+mindful = MindfulAgents(mode='api')
+# OR
+mindful = MindfulAgents()
+mindful.start_api(
+    host="0.0.0.0", # Server host
+    port=6463, # Server port
+    debug=False # Enable debug mode
 )
 ```
 
-The interactive chat mode supports several commands:
+#### API Endpoints
 
-- `/exit` - Exit the chat session
-- `/reset` - Reset the conversation
-- `/agent "agent_name"` - Change the agent (default/custom)
-- `/image "path" "question"` - Send image with optional question
-- `/instruction "new instruction"` - Change system instruction
-- `/load "path/to/history.json"` - Load chat history from file
-- `/help` - Show available commands
+- `POST /v1/api/get/completions`
 
+## Configuration
 
-## Chat History Storage
+### Save Formats
+- `json` (default) - Complete conversation data
+- `txt` - Plain text format
+- `md` - Markdown format with images
 
-Chat histories are automatically saved in the specified format and organized by date:
-- Location: `{save_to}/{YYYY-MM-DD}/{timestamp_uuid}.{format}`
-- Supported formats: JSON, TXT, Markdown
-- Each conversation includes system prompts, user messages, and assistant responses
-
-## Requirements
-- Python 3.8+
-- Internet connection
-
-## Error Handling
-
-The client includes comprehensive error handling for:
-- Network connectivity issues
-- API timeouts
-- Invalid file paths
-- Malformed chat histories
-- Authentication errors
-
-All errors are logged when logging is enabled.
+### Chat History
+Chat histories are automatically saved and organized:
+```
+{save_to}/
+  └── YYYY-MM-DD/
+      └── YYYYMMDD_HHMMSS_UUID8.{format}
+```
 
 ## License
 
