@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mindful-agents"
+version = "25.3"
+authors = [
+  { name="ikmalsaid", email="ikmalsaid@gmail.com" },
+]
+description = "A powerful toolkit for interacting with large language models featuring vision capabilities and customizable agents."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "colorpaws",
+  "flask"
+]
+keywords = [
+  "mindful-agents",
+  "mindful_agents"
+]
+
+[project.urls]
+Homepage = "https://github.com/ikmalsaid/mindful-agents"
+Issues = "https://github.com/ikmalsaid/mindful-agents/issues"
