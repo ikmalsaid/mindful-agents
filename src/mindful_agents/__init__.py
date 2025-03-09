@@ -154,7 +154,7 @@ class MindfulAgents:
         try:
             with open(image_path, 'rb') as image_file:
                 files = {'files': ('file.jpg', image_file, 'image/jpeg')}
-                response = requests.post(self.__up, files=files, headers=self.__hd)
+                response = requests.post(self.__up, files=files, headers=self.__hd, timeout=self.timeout)
                 response.raise_for_status()
                 result = response.json().get('file.jpg')
                 return result
