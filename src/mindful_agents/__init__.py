@@ -10,7 +10,7 @@ import tempfile
 from datetime import datetime
 from typing import Union, List
 from importlib import resources
-from colorpaws import configure
+from colorpaws import ColorPaws
 
 class MindfulAgents:
     """Copyright (C) 2025 Ikmal Said. All rights reserved."""
@@ -28,7 +28,7 @@ class MindfulAgents:
         - timeout      (int): The timeout for each request
         - instructions (str): Custom system prompt to use (None to use default)
         """
-        self.logger = configure(
+        self.logger = ColorPaws(
             name=self.__class__.__name__,
             log_on=log_on,
             log_to=log_to
