@@ -101,7 +101,7 @@ MindfulAgents(mode='api')
 mindful = MindfulAgents()
 mindful.start_api(
     host="0.0.0.0", # Server host
-    port=6463, # Server port
+    port=5000, # Server port
     debug=False # Enable debug mode
 )
 ```
