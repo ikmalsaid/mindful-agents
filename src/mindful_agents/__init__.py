@@ -747,13 +747,13 @@ class MindfulAgents:
                 print(f"Error: {str(e)}")
                 print("Try again or type '/exit' to end the chat")
 
-    def start_api(self, host: str = "0.0.0.0", port: int = 6463, debug: bool = False):
+    def start_api(self, host: str = "0.0.0.0", port: int = None, debug: bool = False):
         """
         Start the API server with all endpoints.
 
         Parameters:
         - host (str): Host to run the server on (default: "0.0.0.0")
-        - port (int): Port to run the server on (default: 6463)
+        - port (int): Port to run the server on (default: None)
         - debug (bool): Enable Flask debug mode (default: False)
         """
         try:

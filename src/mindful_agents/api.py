@@ -3,7 +3,7 @@ import tempfile
 import os
 import json
 
-def MindfulWebAPI(client, host: str = "0.0.0.0", port: int = 6463, debug: bool = False):
+def MindfulWebAPI(client, host: str = None, port: int = None, debug: bool = False):
     """
     Start Client API server with all endpoints.
     
