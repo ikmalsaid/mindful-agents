@@ -71,7 +71,8 @@ history = mindful.load_history("path/to/history.json")
 Start the chat interface:
 
 ```python
-mindful = MindfulAgents(mode='chat')
+from mindful_agents import MindfulAgents
+MindfulAgents(mode='chat')
 # OR
 mindful = MindfulAgents()
 mindful.start_chat(
@@ -94,7 +95,8 @@ Available commands:
 Start the Flask API server:
 
 ```python
-mindful = MindfulAgents(mode='api')
+from mindful_agents import MindfulAgents
+MindfulAgents(mode='api')
 # OR
 mindful = MindfulAgents()
 mindful.start_api(
